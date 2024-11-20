@@ -1,0 +1,33 @@
+filebeat.inputs:
+
+- type: log
+  enabled: true
+  paths:
+    - /var/lib/ecs/filebeat/*.json
+  json.keys_under_root: true
+  json.overwrite_keys: true
+  json.add_error_key: true
+  json.expand_keys: true
+  publisher_pipeline.disable_host: true
+
+processors:
+  - drop_fields:
+       fields: ["agent.ephemeral_id", "agent.hostname", "agent.name", "agent.id", "agent.type", "agent.version", "ecs.version", "input.type", "process.name", "process.pid", "process.thread.id", "process.thread.name", "log.original", "log.offset", "log.level", "log.origin.function", "log.origin.file.name", "log.origin.file.line", "log.logger", "log.file.path"]
+
+setup.template.settings:
+  index.number_of_shards: 1
+  #index.codec: best_compression
+  #_source.enabled: false
+
+output.elasticsearch:
+  # Array of hosts to connect to.
+  hosts: ["localhost:9200"]
+
+  # Protocol - either `http` (default) or `https`.
+  protocol: "https"
+  ssl.certificate_authorities: ["/opt/elasticsearch-8.9.2/config/certs/http_ca.crt"]
+
+  # Authentication credentials - either API key or username/password.
+  #api_key: "beats:OXlsZmQ0b0JnLUTPwjbKCtrtRG06R2tXaUdxdmdURTJLa0Ytdk1Ya1pXdw=="
+  username: "elastic"
+  password: "YvInisCyhKtwpCkFY2F+"
