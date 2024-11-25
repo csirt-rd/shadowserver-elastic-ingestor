@@ -34,7 +34,30 @@ MAPURL = 'https://interchange.shadowserver.org/elasticsearch/v1/map'
 APIROOT = 'https://transform.shadowserver.org/api2/'
 DLROOT = 'https://dl.shadowserver.org/'
 TIMEOUT = 45
-MAX_AGE = 86400 * 7  # 7 days
+MAX_AGE = 86400 * 7 # 7 days
+MAX_AGE_FILEBEAT_LOGS = 86400 / 2 # 12 hours
+
+datetime_patterns = [
+    r".*\.timestamp",
+    r".*_timestamp",
+    r".*\.not_after",
+    r".*\.not_before",
+    r".*\.accessed",
+    r"^created$",
+    r".*\.created",
+    r".*\.installed",
+    r".*\.creation_date",
+    r".*\.ctime",
+    r".*\.mtime",
+    r"^ingested$",
+    r".*\.ingested",
+    r".*\.start",
+    r".*\.end",
+    r".*\.indicator\.first_seen",
+    r".*\.indicator\.last_seen",
+    r".*\.indicator\.modified_at",
+    r".*threat\.enrichments\.matched\.occurred"
+]
 
 
 def set_timestamp(event, field, value):
@@ -92,13 +115,17 @@ class ShadowserverECSLogger:
     """
     Connects to the Shadowserver API to obtain and stream reported events.
     """
+    datetime_field_pattern = re.compile("|".join(datetime_patterns))
     functions = {
-            'timestamp': set_timestamp,
-            'labels': set_labels,
-            'tags': set_tags,
+        'timestamp': set_timestamp,
+        'labels': set_labels,
+        'tags': set_tags,
     }
     map_filename = 'map.json'
     ignored_reports: set[str] = set()
+
+    _func_pattern = re.compile("^&([^(]+)")
+    _func_args_pattern = re.compile("^&([^(]+)\(([^)]+)\)")
 
     def __init__(self, args):
         """
@@ -246,6 +273,7 @@ class ShadowserverECSLogger:
                         fh.truncate(0)
         
         self.expire_old_files(dst)
+        self.expire_old_files(log_dst, MAX_AGE_FILEBEAT_LOGS)
 
 
     def run(self):
@@ -307,33 +335,60 @@ class ShadowserverECSLogger:
                 event = {}
                 count += 1
                 for field in row:
-                    mapped = ".".join(['extra', field])
                     value = row[field]
-                    name = ".".join([report['type'], field])
-                    if value != "":
-                        if name in self.mapping['map']:
-                            mapped = self.mapping['map'][name]
-                        if field in self.mapping['map']:
-                            mapped = self.mapping['map'][field]
-                        m = re.match("^&([^(]+)\(([^)]+)\)", mapped)
-                        if m:
-                            func = m.groups()[0]
-                            args = m.groups()[1].split(',')
-                            if func in self.functions:
-                                self.functions[func](event, field, value, args)
-                            continue
-                        m = re.match("^&([^(]+)", mapped)
-                        if m:
-                            func = m.groups()[0]
-                            if func in self.functions:
-                                self.functions[func](event, field, value)
-                            continue
-                        event[mapped] = value
-                event['data_stream.dataset'] = report['type']
+
+                    if value == "":
+                        continue
+
+                    mapped = self._map_field(field, report['type'])
+
+                    if mapped.startswith("&"):
+                        self._execute_function(event, mapped, field, value)
+                        continue
+
+                    event[mapped] = self._transform_field(mapped, value)
+                event['event.dataset'] = report['type']
                 self.logger.info('', extra=event)
 
         self.logger.removeHandler(handler)
         print("INFO: Processed %d events for %r" % (count, report['file']))
+
+    
+    def _transform_field(self, mapped_field: str, value: str):
+        if self.datetime_field_pattern.match(mapped_field):
+            parsed_date = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+            return parsed_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        return value
+
+
+    def _execute_function(self, event, mapped_fieldname, fieldname, value):
+        m = self._func_args_pattern.match(mapped_fieldname)
+        if m:
+            groups = m.groups()
+            func = groups[0]
+            args = groups[1].split(',')
+            if func in self.functions:
+                self.functions[func](event, fieldname, value, args)
+                return
+
+        m = self._func_pattern.match(mapped_fieldname)
+        if m:
+            func = m.groups()[0]
+            if func in self.functions:
+                self.functions[func](event, fieldname, value)
+                return
+
+    def _map_field(self, field: str, report_type: str) -> str:
+        if field in self.mapping['map']:
+            return self.mapping['map'][field]
+        
+        name = f"{report_type}.{field}"
+
+        if name in self.mapping['map']:
+            return self.mapping['map'][name]
+        
+        return f"extra.{field}"
 
     def _api_call(self, method, request):
         """

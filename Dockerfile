@@ -28,24 +28,19 @@ COPY filebeat.yml /etc/filebeat/filebeat.yml
 WORKDIR /app
 
 # Install script dependencies
-COPY ./requirements.txt ./
+COPY . .
 RUN pip install -r ./requirements.txt
-
-COPY ./config.ini ./
-COPY ./shadowserver_ecs_logger.py ./
 RUN chmod +x ./shadowserver_ecs_logger.py
 
 # Execute script at the start of the day
 ENV SHADOWSERVER_ECS_LOGGER_CRON="0 0 * * *"
 
 # Create cron file to execute python script based on cron expression passed as a Env Var
-RUN echo "SHELL=/bin/bash" > /etc/cron.d/shadowserver-script-cron && \
-    echo "${SHADOWSERVER_ECS_LOGGER_CRON} root /usr/local/bin/python3 /app/shadowserver_ecs_logger.py >> /var/log/script.log 2>&1" >> /etc/cron.d/shadowserver-script-cron && \
-    chmod 0644 /etc/cron.d/shadowserver-script-cron && \
-    crontab /etc/cron.d/shadowserver-script-cron
-
 # Execute cron and filebeat at container startup
-CMD chmod go-w /etc/filebeat/filebeat.yml && \
-    ls -l /etc/filebeat && \
+CMD echo "SHELL=/bin/bash" > /etc/cron.d/shadowserver-script-cron && \
+    echo "${SHADOWSERVER_ECS_LOGGER_CRON} root /usr/local/bin/python3 /app/shadowserver_ecs_logger.py /app/config.ini >> /var/log/script.log 2>&1" >> /etc/cron.d/shadowserver-script-cron && \
+    chmod 0644 /etc/cron.d/shadowserver-script-cron && \
+    crontab /etc/cron.d/shadowserver-script-cron && \
+    chmod go-w /etc/filebeat/filebeat.yml && \
     service cron start && \
     filebeat -e -c /etc/filebeat/filebeat.yml
