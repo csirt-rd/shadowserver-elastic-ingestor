@@ -1,5 +1,6 @@
 # FROM debian:bullseye-slim
 FROM python:3.13.0-slim-bullseye
+LABEL org.opencontainers.image.source="https://github.com/csirt-rd/shadowserver-elastic-ingestor"
 
 # Dependencies installation (cron, wget)
 RUN apt-get update && \
