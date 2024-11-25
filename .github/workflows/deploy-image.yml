@@ -22,5 +22,5 @@ jobs:
 
       - name: Build Image
         run: |
-          docker build . --tag ghcr.io/csirt-rd/shadowserver_elastic_ingestor:latest
-          docker push ghcr.io/csirt-rd/shadowserver_elastic_ingestor:latest
+          docker build . --tag ghcr.io/csirt-rd/shadowserver-elastic-ingestor:latest
+          docker push ghcr.io/csirt-rd/shadowserver-elastic-ingestor:latest
