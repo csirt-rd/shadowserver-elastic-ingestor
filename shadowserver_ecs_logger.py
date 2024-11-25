@@ -356,8 +356,11 @@ class ShadowserverECSLogger:
     
     def _transform_field(self, mapped_field: str, value: str):
         if self.datetime_field_pattern.match(mapped_field):
-            parsed_date = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
-            return parsed_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+            try:
+                parsed_date = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                return parsed_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+            except ValueError:
+                return value
         
         return value
 
